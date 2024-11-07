@@ -11,7 +11,7 @@ import numpy as np
 
 class DatasetCOCO(Dataset):
     def __init__(self, datapath, fold, transform, split, shot, use_original_imgsize):
-        self.split = 'val' if split in ['val', 'test'] else 'trn'
+        self.split = 'val' if split in ['val', 'train_command'] else 'trn'
         self.fold = fold
         self.nfolds = 4
         self.nclass = 80
@@ -110,7 +110,9 @@ class DatasetCOCO(Dataset):
         else:
             mask_path = os.path.join(mask_path, 'train2014')
         mask_path = os.path.join(mask_path, name)
-        mask = torch.tensor(np.array(Image.open(mask_path + '.png')))
+        #######mask = torch.tensor(np.array(Image.open(mask_path + '.png')))
+        mask = torch.tensor(np.array(Image.open(mask_path + '.png')), dtype=torch.uint8)
+
         return mask
 
     def load_frame(self):

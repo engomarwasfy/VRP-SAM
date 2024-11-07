@@ -146,9 +146,9 @@ def vgg16(pretrained=False, **kwargs):
         kwargs['init_weights'] = False
     model = VGG(make_layers(cfg['D']), **kwargs)
     if pretrained:
-        # model.load_state_dict(model_zoo.load_url(model_urls['vgg16_bn']))
-        model_path = '/root/paddlejob/workspace/env_run/hsnet_detr/vgg16.pth'
-        model.load_state_dict(torch.load(model_path), strict=False) 
+        model.load_state_dict(model_zoo.load_url(model_urls['vgg16_bn']))
+        #model_path = '/root/paddlejob/workspace/env_run/hsnet_detr/vgg16.pth'
+        #model.load_state_dict(torch.load(model_path), strict=False)
     return model
 
 
@@ -161,9 +161,9 @@ def vgg16_bn(pretrained=False, **kwargs):
         kwargs['init_weights'] = False
     model = VGG(make_layers(cfg['D'], batch_norm=True), **kwargs)
     if pretrained:
-        #model.load_state_dict(model_zoo.load_url(model_urls['vgg16_bn']))
-        model_path = '/root/paddlejob/workspace/env_run/vrp_sam/vgg16_bn.pth'
-        model.load_state_dict(torch.load(model_path), strict=False)        
+        model.load_state_dict(model_zoo.load_url(model_urls['vgg16_bn']))
+        #model_path = '/root/paddlejob/workspace/env_run/vrp_sam/vgg16_bn.pth'
+        #model.load_state_dict(torch.load(model_path), strict=False)
     return model
 
 

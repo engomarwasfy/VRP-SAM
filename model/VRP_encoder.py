@@ -38,7 +38,7 @@ def get_bounding_boxes(mask):
 def get_point_mask(mask, training, max_points=20):
         """
         Returns:
-            Point_mask: random 20 point for train and test.
+            Point_mask: random 20 point for train and train_command.
             If a mask is empty, it's Point_mask will be all zero.
         """
         max_points = min(max_points, mask.sum().item())
@@ -62,7 +62,7 @@ def get_point_mask(mask, training, max_points=20):
 def get_scribble_mask(mask, training, stroke_preset=['rand_curve', 'rand_curve_small'], stroke_prob=[0.5, 0.5]):
         """
         Returns:
-            Scribble_mask: random 20 point for train and test.
+            Scribble_mask: random 20 point for train and train_command.
             If a mask is empty, it's Scribble_mask will be all zero.
         """
         if training:

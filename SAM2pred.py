@@ -8,7 +8,8 @@ import numpy as np
 class  SAM_pred(nn.Module):
     def __init__(self, ):
         super().__init__()
-        self.sam_model = sam_model_registry['vit_h']('/root/paddlejob/workspace/env_run/vrp_sam/sam_vit_h_4b8939.pth')
+        #self.sam_model = sam_model_registry['vit_h']('/content/drive/MyDrive/omarwasfy/PhD/PhD1/Pattern Recognition/Topics/SemanticSegmentation/VRP-SAM/sam_vit_h_4b8939.pth')
+        self.sam_model = sam_model_registry['vit_h']('/media/wasfy/KINGSTON/phd/patternRecognition/vrpsam/sam_vit_h_4b8939.pth')
         self.sam_model.eval()
 
     def forward_img_encoder(self, query_img):
@@ -19,12 +20,13 @@ class  SAM_pred(nn.Module):
         return  query_feats
     
     def get_feat_from_np(self, query_img, query_name, protos):
-        np_feat_path = '/root/paddlejob/workspace/env_run/vrp_sam/feats_np/coco/'
+        #np_feat_path = '/content/drive/MyDrive/omarwasfy/PhD/PhD1/Pattern Recognition/Topics/SemanticSegmentation/VRP-SAM/coco_feats/'
+        np_feat_path = '/media/wasfy/KINGSTON/phd/patternRecognition/vrpsam/coco_feats/'
         if not os.path.exists(np_feat_path): os.makedirs(np_feat_path)
         files_name = os.listdir(np_feat_path)
         query_feat_list = []
         for idx, name in enumerate(query_name):
-            if '/root' in name:
+            if '/media' in name:
                 name = os.path.splitext(name.split('/')[-1])[0]
                 
             if name + '.npy' not in files_name:

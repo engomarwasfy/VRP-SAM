@@ -10,7 +10,7 @@ import numpy as np
 
 class DatasetPASCAL(Dataset):
     def __init__(self, datapath, fold, transform, split, shot, use_original_imgsize):
-        self.split = 'val' if split in ['val', 'test'] else 'trn'
+        self.split = 'val' if split in ['val', 'train_command'] else 'trn'
         self.fold = fold
         self.nfolds = 4
         self.nclass = 20

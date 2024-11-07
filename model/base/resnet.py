@@ -2,6 +2,8 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 from torch.hub import load_state_dict_from_url
+import torch.utils.model_zoo as model_zoo
+
 from typing import Type, Any, Callable, Union, List, Optional
 
 
@@ -317,9 +319,9 @@ def resnet50(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
     """
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
-        # model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
-        model_path = '/root/paddlejob/workspace/env_run/vrp_sam/resnet50_v2.pth'
-        model.load_state_dict(torch.load(model_path), strict=False)
+        model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
+        #model_path = '/root/paddlejob/workspace/env_run/vrp_sam/resnet50_v2.pth'
+        #model.load_state_dict(torch.load(model_path), strict=False)
     return model
 
 
@@ -333,9 +335,9 @@ def resnet101(pretrained: bool = False, progress: bool = True, **kwargs: Any) ->
     """
     model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
     if pretrained:
-        # model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
-        model_path = '/root/paddlejob/workspace/env_run/vrp_sam/resnet101_v2.pth'
-        model.load_state_dict(torch.load(model_path), strict=False)
+        model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
+        #model_path = '/root/paddlejob/workspace/env_run/vrp_sam/resnet101_v2.pth'
+        #model.load_state_dict(torch.load(model_path), strict=False)
     return model
 
 

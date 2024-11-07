@@ -83,37 +83,47 @@ class AverageMeter:
 
 
 class Logger:
-    r""" Writes evaluation results of training/testing """
+    """ Writes evaluation results of training/testing """
     @classmethod
     def initialize(cls, args, training):
-        logtime = datetime.datetime.now().__format__('_%m%d_%H%M%S')
-        logpath = args.logpath if training else '_TEST_' + args.load.split('/')[-2].split('.')[0] + logtime
-        if logpath == '': logpath = logtime
+        # Generate a timestamp
+        logtime = datetime.datetime.now().strftime('_%m%d_%H%M%S')
 
-        cls.logpath = os.path.join('logs', logpath + '.log')
-        cls.benchmark = args.benchmark
-        os.makedirs(cls.logpath)
+        # Determine log path for training or testing
+        if training:
+            logdir = os.path.join(args.logpath, 'training_logs')
+        else:
+            # Generate a unique directory name for testing logs
+            test_name = '_TEST_' + args.load.split('/')[-2].split('.')[0]
+            logdir = os.path.join(args.logpath, test_name + logtime)
 
+        # Ensure the directory exists
+        os.makedirs(logdir, exist_ok=True)
+
+        # Create the final log file path with timestamp in the filename
+        cls.logpath = os.path.join(logdir, 'log' + logtime + '.txt')
+
+        # Configure logging to file
         logging.basicConfig(filemode='w',
-                            filename=os.path.join(cls.logpath, 'log.txt'),
+                            filename=cls.logpath,
                             level=logging.INFO,
                             format='%(message)s',
                             datefmt='%m-%d %H:%M:%S')
 
-        # Console log config
+        # Configure console log
         console = logging.StreamHandler()
         console.setLevel(logging.INFO)
         formatter = logging.Formatter('%(message)s')
         console.setFormatter(formatter)
         logging.getLogger('').addHandler(console)
 
-        # Tensorboard writer
-        cls.tbd_writer = SummaryWriter(os.path.join(cls.logpath, 'tbd/runs'))
+        # Set up Tensorboard writer in the log directory
+        cls.tbd_writer = SummaryWriter(os.path.join(logdir, 'tbd/runs'))
 
-        # Log arguments
+        # Log the arguments passed to the script
         logging.info('\n:=========== Few-shot Seg. with VRP-SAM ===========')
-        for arg_key in args.__dict__:
-            logging.info('| %20s: %-24s' % (arg_key, str(args.__dict__[arg_key])))
+        for arg_key, arg_value in args.__dict__.items():
+            logging.info('| %20s: %-24s' % (arg_key, str(arg_value)))
         logging.info(':==================================================\n')
 
     @classmethod

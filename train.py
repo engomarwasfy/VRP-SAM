@@ -73,6 +73,8 @@ if __name__ == '__main__':
     parser.add_argument('--backbone', type=str, default='resnet50', choices=['vgg16', 'resnet50', 'resnet101'])
     args = parser.parse_args()
     # Distributed setting
+    print("CUDA_VISIBLE_DEVICES:", os.getenv("CUDA_VISIBLE_DEVICES"))
+    print("Available GPUs:", [torch.cuda.get_device_name(i) for i in range(torch.cuda.device_count())])
     local_rank = args.local_rank
     dist.init_process_group(backend='nccl')
     print('local_rank: ', local_rank)

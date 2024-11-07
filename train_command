@@ -1,0 +1,36 @@
+python3 -m torch.distributed.launch --nproc_per_node=4 /home/wasfy/PycharmProjects/VRP-SAM/train.py \
+        --datapath /media/wasfy/KINGSTON/phd/patternRecognition/vrpsam/Datasets_HSN \
+        --logpath /media/wasfy/KINGSTON/phd/patternRecognition/vrpsam/logs \
+        --benchmark coco \
+        --backbone vgg16 \
+        --fold 0 \
+        --condition mask \
+        --num_query 50 \
+        --epochs 50 \
+        --lr 1e-4 \
+        --bsz 16
+
+
+ CUDA_VISIBLE_DEVICES=0,1 python3 -m torch.distributed.launch --nproc_per_node=2 /home/wasfy/PycharmProjects/VRP-SAM/train.py \
+    --datapath /media/wasfy/KINGSTON/phd/patternRecognition/vrpsam/Datasets_HSN \
+    --logpath /media/wasfy/KINGSTON/phd/patternRecognition/vrpsam/logs \
+    --benchmark coco \
+    --backbone vgg16 \
+    --fold 0 \
+    --condition mask \
+    --num_query 50 \
+    --bsz 16
+
+!python3 -m torch.distributed.launch --nproc_per_node=1 train.py \
+        --datapath ../Datasets_HSN \
+        --logpath ../logs \
+        --benchmark pascal \
+        --backbone vgg16 \
+        --fold 0 \
+        --condition point \
+        --num_query 50 \
+        --epochs 50 \
+        --lr 1e-4 \
+        --bsz 2
+
+  watch -n 1 nvidia-smi
