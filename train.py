@@ -125,6 +125,11 @@ if __name__ == '__main__':
     # Training 
     best_val_miou = float('-inf')
     best_val_loss = float('inf')
+    #if utils.is_main_process():
+    #    Logger.save_model_miou(model, 1, 3)
+    #with torch.no_grad():
+    #    val_loss, val_miou, val_fb_iou = train(args, 0, model, sam_model, dataloader_val, optimizer, scheduler,
+    #                                         training=False)
     for epoch in range(args.epochs):
 
         trn_loss, trn_miou, trn_fb_iou = train(args, epoch, model, sam_model, dataloader_trn, optimizer, scheduler, training=True)

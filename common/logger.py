@@ -101,11 +101,12 @@ class Logger:
         os.makedirs(logdir, exist_ok=True)
 
         # Create the final log file path with timestamp in the filename
-        cls.logpath = os.path.join(logdir, 'log' + logtime + '.txt')
+        cls.logpath = args.logpath
+        logfilepath = os.path.join(logdir, 'log' + logtime + '.txt')
 
         # Configure logging to file
         logging.basicConfig(filemode='w',
-                            filename=cls.logpath,
+                            filename=logfilepath,
                             level=logging.INFO,
                             format='%(message)s',
                             datefmt='%m-%d %H:%M:%S')
