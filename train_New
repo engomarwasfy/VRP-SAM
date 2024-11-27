@@ -1,9 +1,9 @@
 import os
 import argparse
-import torch
+
 import torch.optim as optim
 import torch.nn as nn
-import torch.nn.functional as F
+import torch
 import torch.distributed as dist
 
 from model.VRP_encoder import VRP_encoder
@@ -15,7 +15,7 @@ from SAM2pred import SAM_pred
 
 
 def train(args, epoch, model, sam_model, dataloader, optimizer, scheduler, training):
-    """ Train the VRP_encoder model """
+    r""" Train VRP_encoder model """
     utils.fix_randseed(args.seed + epoch) if training else utils.fix_randseed(args.seed)
     model.module.train_mode() if training else model.module.eval()
     average_meter = AverageMeter(dataloader.dataset)
@@ -27,6 +27,7 @@ def train(args, epoch, model, sam_model, dataloader, optimizer, scheduler, train
 
         low_masks, pred_mask = sam_model(batch['query_img'], batch['query_name'], protos)
         logit_mask = low_masks
+
         pred_mask = torch.sigmoid(logit_mask) > 0.5
         pred_mask = pred_mask.float()
 
@@ -48,12 +49,37 @@ def train(args, epoch, model, sam_model, dataloader, optimizer, scheduler, train
     return avg_loss, miou, fb_iou
 
 
+def convert_old_checkpoint(old_checkpoint_path, new_checkpoint_path):
+    """Convert an old-format checkpoint to the new format."""
+    old_checkpoint = torch.load(old_checkpoint_path, map_location='cpu')
+    Logger.info(f"Converting old checkpoint: {old_checkpoint_path}")
+
+    # Wrap the old checkpoint into the new format
+    new_checkpoint_state_dict = {}
+    for k, v in old_checkpoint.items():
+        new_key = k.replace('module.', '')  # Remove 'module.' prefix
+        new_checkpoint_state_dict[new_key] = v
+
+    new_checkpoint = {
+        'model_state_dict': new_checkpoint_state_dict,  # Converted state dict
+        'optimizer_state_dict': None,  # Placeholder for optimizer state
+        'best_val_miou': float('-inf'),  # Default value for best_val_miou
+        'best_val_loss': float('inf'),  # Default value for best_val_loss
+        'epoch': 0,  # Default starting epoch
+    }
+
+    # Save the new checkpoint
+    torch.save(new_checkpoint, new_checkpoint_path)
+    Logger.info(f"Converted checkpoint saved to: {new_checkpoint_path}")
+    return new_checkpoint
+
+
 if __name__ == '__main__':
     # Arguments parsing
     parser = argparse.ArgumentParser(description='Visual Prompt Encoder Pytorch Implementation')
-    parser.add_argument('--datapath', type=str, default='/root/paddlejob/workspace/env_run/datsets/')
+    parser.add_argument('--datapath', type=str, default='/path/to/dataset')
     parser.add_argument('--benchmark', type=str, default='coco', choices=['pascal', 'coco', 'fss'])
-    parser.add_argument('--logpath', type=str, default='')
+    parser.add_argument('--logpath', type=str, default='/path/to/logs')
     parser.add_argument('--bsz', type=int, default=2)
     parser.add_argument('--lr', type=float, default=1e-4)
     parser.add_argument('--weight_decay', type=float, default=1e-6)
@@ -62,12 +88,14 @@ if __name__ == '__main__':
     parser.add_argument('--seed', type=int, default=321)
     parser.add_argument('--fold', type=int, default=0, choices=[0, 1, 2, 3])
     parser.add_argument('--condition', type=str, default='scribble', choices=['point', 'scribble', 'box', 'mask'])
-    parser.add_argument('--use_ignore', type=bool, default=True, help='Boundaries are not considered during pascal training')
+    parser.add_argument('--use_ignore', type=bool, default=True)
     parser.add_argument('--local_rank', type=int, default=-1)
     parser.add_argument('--num_query', type=int, default=50)
     parser.add_argument('--backbone', type=str, default='resnet50', choices=['vgg16', 'resnet50', 'resnet101'])
-    parser.add_argument('--save_path', type=str, default='model_checkpoint.pth', help='Path to save the model checkpoint')
-    parser.add_argument('--load_path', type=str, default='', help='Path to load a pre-trained model checkpoint')
+    parser.add_argument('--checkpoint_path', type=str, default='', help='Path to load model checkpoint')
+    parser.add_argument('--epoch', type=int, default=-1,
+                        help='Starting epoch if no checkpoint or checkpoint has no epoch')
+
     args = parser.parse_args()
 
     # Distributed setting
@@ -92,75 +120,51 @@ if __name__ == '__main__':
     sam_model.to(device)
     model.to(device)
     model = torch.nn.SyncBatchNorm.convert_sync_batchnorm(model)
+
+    # Device setup
     model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank],
                                                       output_device=args.local_rank, find_unused_parameters=True)
 
-    optimizer = optim.AdamW([
-        {'params': model.module.transformer_decoder.parameters()},
-        {'params': model.module.downsample_query.parameters(), "lr": args.lr},
-        {'params': model.module.merge_1.parameters(), "lr": args.lr},
-    ], lr=args.lr, weight_decay=args.weight_decay, betas=(0.9, 0.999))
+    # Initialize best metrics
+    best_val_miou = float('-inf')
+    best_val_loss = float('inf')
+    start_epoch = args.epoch  # Default starting epoch
 
-    # Dataset initialization
-    FSSDataset.initialize(img_size=512, datapath=args.datapath, use_original_imgsize=False)
-    dataloader_trn = FSSDataset.build_dataloader(args.benchmark, args.bsz, args.nworker, args.fold, 'trn')
-    dataloader_val = FSSDataset.build_dataloader(args.benchmark, args.bsz, args.nworker, args.fold, 'val')
+    # Load checkpoint if exists
+    if args.checkpoint_path and os.path.exists(args.checkpoint_path):
+        checkpoint = torch.load(args.checkpoint_path, map_location=device)
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs * len(dataloader_trn))
-
-    # Load model from checkpoint if specified
-    if args.load_path and os.path.exists(args.load_path):
-        checkpoint = torch.load(args.load_path, map_location=device)
-
-        # Ensure 'model_state_dict' exists in the checkpoint
         if 'model_state_dict' not in checkpoint:
-            raise RuntimeError(f"Missing 'model_state_dict' in checkpoint at {args.load_path}")
-        model.load_state_dict(checkpoint['model_state_dict'])
+            # Convert old-format checkpoint
+            new_checkpoint_path = args.checkpoint_path.replace('.pt', '_converted.pt')
+            checkpoint = convert_old_checkpoint(args.checkpoint_path, new_checkpoint_path)
 
-        # Ensure 'optimizer_state_dict' exists in the checkpoint
-        if 'optimizer_state_dict' not in checkpoint:
-            raise RuntimeError(f"Missing 'optimizer_state_dict' in checkpoint at {args.load_path}")
-        optimizer_state = checkpoint['optimizer_state_dict']
-        optimizer.load_state_dict(optimizer_state)
+        # Remove `module.` prefix if it exists in checkpoint keys
+        checkpoint_state_dict = checkpoint['model_state_dict']
+        new_state_dict = {}
+        for k, v in checkpoint_state_dict.items():
+            new_key = k.replace('module.', '')  # Remove 'module.' prefix
+            new_state_dict[new_key] = v
 
-        # Ensure 'scheduler_state_dict' exists in the checkpoint
-        if 'scheduler_state_dict' not in checkpoint:
-            raise RuntimeError(f"Missing 'scheduler_state_dict' in checkpoint at {args.load_path}")
-        scheduler_state = checkpoint['scheduler_state_dict']
-        scheduler.load_state_dict(scheduler_state)  # Restore scheduler state
+        model.module.load_state_dict(new_state_dict)
+        Logger.info("Model state loaded successfully.")
 
-        # Ensure 'epoch' exists in the checkpoint
-        if 'epoch' not in checkpoint:
-            raise RuntimeError(f"Missing 'epoch' in checkpoint at {args.load_path}")
-        start_epoch = checkpoint['epoch'] + 1  # Start from the next epoch
+        # Load optimizer state if available
+        optimizer_state = checkpoint.get('optimizer_state_dict')
+        if optimizer_state:
+            optimizer.load_state_dict(optimizer_state)
+            Logger.info("Optimizer state loaded successfully.")
+        else:
+            Logger.info("Checkpoint does not contain 'optimizer_state_dict'. Optimizer state not loaded.")
 
-        # Ensure 'best_val_miou' exists in the checkpoint
-        if 'best_val_miou' not in checkpoint:
-            raise RuntimeError(f"Missing 'best_val_miou' in checkpoint at {args.load_path}")
-        best_val_miou = checkpoint['best_val_miou']
+        # Load best metrics if available
+        best_val_miou = checkpoint.get('best_val_miou', best_val_miou)
+        best_val_loss = checkpoint.get('best_val_loss', best_val_loss)
+        start_epoch = checkpoint.get('epoch', args.epoch) + 1
+        Logger.info(
+            f"Loaded checkpoint with best_val_miou: {best_val_miou}, best_val_loss: {best_val_loss}, start_epoch: {start_epoch}")
 
-        print(f"Loaded model from {args.load_path}, starting from epoch {start_epoch}")
-    else:
-        start_epoch = 0
-        best_val_miou = float('-inf')
-        print("No checkpoint found, training from scratch")
-    '''
-       else:
-           raise RuntimeError(f"Checkpoint path '{args.load_path}' not found or is invalid")
-    '''
-
-    # Save the initial model state (including scheduler)
-    if utils.is_main_process():
-        torch.save({
-            'epoch': start_epoch - 1,
-            'model_state_dict': model.state_dict(),
-            'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state (None initially)
-            'best_val_miou': best_val_miou,
-        }, args.save_path)
-        print(f"Initial model state saved to {args.save_path}")
-
-    # Freeze layers (optional)
+    # Freeze layers
     for param in model.module.layer0.parameters():
         param.requires_grad = False
     for param in model.module.layer1.parameters():
@@ -172,15 +176,24 @@ if __name__ == '__main__':
     for param in model.module.layer4.parameters():
         param.requires_grad = False
 
+    optimizer = optim.AdamW([
+        {'params': model.module.transformer_decoder.parameters()},
+        {'params': model.module.downsample_query.parameters(), "lr": args.lr},
+        {'params': model.module.merge_1.parameters(), "lr": args.lr},
+    ], lr=args.lr, weight_decay=args.weight_decay, betas=(0.9, 0.999))
     Evaluator.initialize(args)
 
+    # Dataset initialization
+    FSSDataset.initialize(img_size=512, datapath=args.datapath, use_original_imgsize=False)
+    dataloader_trn = FSSDataset.build_dataloader(args.benchmark, args.bsz, args.nworker, args.fold, 'trn')
+    dataloader_val = FSSDataset.build_dataloader(args.benchmark, args.bsz, args.nworker, args.fold, 'val')
 
-    # Training Loop
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs * len(dataloader_trn))
+
+    # Training
     for epoch in range(start_epoch, args.epochs):
-        # Training
         trn_loss, trn_miou, trn_fb_iou = train(args, epoch, model, sam_model, dataloader_trn, optimizer, scheduler,
                                                training=True)
-        # Validation
         with torch.no_grad():
             val_loss, val_miou, val_fb_iou = train(args, epoch, model, sam_model, dataloader_val, optimizer, scheduler,
                                                    training=False)
@@ -189,16 +202,18 @@ if __name__ == '__main__':
         if val_miou > best_val_miou:
             best_val_miou = val_miou
             if utils.is_main_process():
-                torch.save({
-                    'epoch': epoch,
-                    'model_state_dict': model.state_dict(),
+                # Save the checkpoint with additional information
+                checkpoint = {
+                    'model_state_dict': model.module.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state
                     'best_val_miou': best_val_miou,
-                }, args.save_path)
-                print(f"Best model updated and saved to {args.save_path}")
+                    'best_val_loss': best_val_loss,
+                    'epoch': epoch,
+                }
+                checkpoint_path = os.path.join(args.logpath, f'best_checkpoint_epoch_{epoch}.pth')
+                torch.save(checkpoint, checkpoint_path)
+                Logger.info(f"Saved new best checkpoint at {checkpoint_path}")
 
-        # Log to TensorBoard (optional)
         if utils.is_main_process():
             Logger.tbd_writer.add_scalars('data/loss', {'trn_loss': trn_loss, 'val_loss': val_loss}, epoch)
             Logger.tbd_writer.add_scalars('data/miou', {'trn_miou': trn_miou, 'val_miou': val_miou}, epoch)
