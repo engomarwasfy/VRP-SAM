@@ -16,6 +16,10 @@ model_urls = {
     'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
     'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
     'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
+    #'resnet50_2': 'https://drive.usercontent.google.com/download?id=1w5pRmLJXvmQQA5PtCbHhZc_uC4o0YbmA&export=download&authuser=0',
+    'resnet50_2':'https://drive.usercontent.google.com/download?id=1zdHgL470qHWgre1cGSMlmuyW0oti9Hzs&export=download&authuser=0&confirm=t&uuid=f0a2128a-a8fc-4406-9494-bad582a8527c&at=AENtkXar08eoR-DkePx_DOEKyNva:1732988784228',
+    'resnet101_2':'https://drive.usercontent.google.com/download?id=1iSvMLqAmllqaKymvnwj4Z30OFm_b7iQx&export=download&authuser=0&confirm=t&uuid=7581260e-8b7e-4aba-80f2-d4d3d56ad7c5&at=AENtkXZ0D0aXK8H0ivJy991kvL81:1732988862335',
+    'resnet152_2': 'https://drive.usercontent.google.com/download?id=1Sz8C05PdIKUNMB4EHGwgxIBypLJavNPD&export=download&authuser=0&confirm=t&uuid=4800e780-0900-4f0e-bc03-a778723ccc5d&at=AENtkXYc7sVQuBJX-krfeUrk83zC:1732988955714',
     'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
     'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
     'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
@@ -319,7 +323,7 @@ def resnet50(pretrained: bool = False, progress: bool = True, **kwargs: Any) -> 
     """
     model = ResNet(Bottleneck, [3, 4, 6, 3], **kwargs)
     if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
+        model.load_state_dict(model_zoo.load_url(model_urls['resnet50_2']))
         #model_path = '/root/paddlejob/workspace/env_run/vrp_sam/resnet50_v2.pth'
         #model.load_state_dict(torch.load(model_path), strict=False)
     return model
@@ -335,7 +339,7 @@ def resnet101(pretrained: bool = False, progress: bool = True, **kwargs: Any) ->
     """
     model = ResNet(Bottleneck, [3, 4, 23, 3], **kwargs)
     if pretrained:
-        model.load_state_dict(model_zoo.load_url(model_urls['resnet50']))
+        model.load_state_dict(model_zoo.load_url(model_urls['resnet101_2']))
         #model_path = '/root/paddlejob/workspace/env_run/vrp_sam/resnet101_v2.pth'
         #model.load_state_dict(torch.load(model_path), strict=False)
     return model

@@ -67,7 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--backbone', type=str, default='resnet50', choices=['vgg16', 'resnet50', 'resnet101'])
     parser.add_argument('--save_path', type=str, default='model_checkpoint/', help='Path to save model checkpoints')
     parser.add_argument('--load_path', type=str, default='', help='Path to load a pre-trained model checkpoint')
-    parser.add_argument('--training', type=bool, default=False, help='Set to False for validation only')
+    parser.add_argument('--training', type=bool, default=True, help='Set to False for validation only')
     args = parser.parse_args()
 
     # Debugging: Print the value of args.training
