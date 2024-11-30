@@ -2,7 +2,6 @@ import os
 import argparse
 import torch
 import torch.optim as optim
-import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributed as dist
 
@@ -15,7 +14,7 @@ from SAM2pred import SAM_pred
 
 
 def train(args, epoch, model, sam_model, dataloader, optimizer, scheduler, training):
-    """ Train the VRP_encoder model """
+    """ Train or validate the VRP_encoder model """
     utils.fix_randseed(args.seed + epoch) if training else utils.fix_randseed(args.seed)
     model.module.train_mode() if training else model.module.eval()
     average_meter = AverageMeter(dataloader.dataset)
@@ -66,9 +65,13 @@ if __name__ == '__main__':
     parser.add_argument('--local_rank', type=int, default=-1)
     parser.add_argument('--num_query', type=int, default=50)
     parser.add_argument('--backbone', type=str, default='resnet50', choices=['vgg16', 'resnet50', 'resnet101'])
-    parser.add_argument('--save_path', type=str, default='model_checkpoint.pth', help='Path to save the model checkpoint')
+    parser.add_argument('--save_path', type=str, default='model_checkpoint/', help='Path to save model checkpoints')
     parser.add_argument('--load_path', type=str, default='', help='Path to load a pre-trained model checkpoint')
+    parser.add_argument('--training', type=bool, default=False, help='Set to False for validation only')
     args = parser.parse_args()
+
+    # Debugging: Print the value of args.training
+    print(f"Value of args.training: {args.training}")
 
     # Distributed setting
     print("CUDA_VISIBLE_DEVICES:", os.getenv("CUDA_VISIBLE_DEVICES"))
@@ -80,7 +83,7 @@ if __name__ == '__main__':
     device = torch.device('cuda', local_rank)
 
     if utils.is_main_process():
-        Logger.initialize(args, training=True)
+        Logger.initialize(args, training=args.training)
     utils.fix_randseed(args.seed)
 
     # Model initialization
@@ -112,29 +115,23 @@ if __name__ == '__main__':
     if args.load_path and os.path.exists(args.load_path):
         checkpoint = torch.load(args.load_path, map_location=device)
 
-        # Ensure 'model_state_dict' exists in the checkpoint
         if 'model_state_dict' not in checkpoint:
             raise RuntimeError(f"Missing 'model_state_dict' in checkpoint at {args.load_path}")
         model.load_state_dict(checkpoint['model_state_dict'])
 
-        # Ensure 'optimizer_state_dict' exists in the checkpoint
-        if 'optimizer_state_dict' not in checkpoint:
-            raise RuntimeError(f"Missing 'optimizer_state_dict' in checkpoint at {args.load_path}")
-        optimizer_state = checkpoint['optimizer_state_dict']
-        optimizer.load_state_dict(optimizer_state)
+        if args.training:
+            if 'optimizer_state_dict' not in checkpoint:
+                raise RuntimeError(f"Missing 'optimizer_state_dict' in checkpoint at {args.load_path}")
+            optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
-        # Ensure 'scheduler_state_dict' exists in the checkpoint
-        if 'scheduler_state_dict' not in checkpoint:
-            raise RuntimeError(f"Missing 'scheduler_state_dict' in checkpoint at {args.load_path}")
-        scheduler_state = checkpoint['scheduler_state_dict']
-        scheduler.load_state_dict(scheduler_state)  # Restore scheduler state
+            if 'scheduler_state_dict' not in checkpoint:
+                raise RuntimeError(f"Missing 'scheduler_state_dict' in checkpoint at {args.load_path}")
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
-        # Ensure 'epoch' exists in the checkpoint
         if 'epoch' not in checkpoint:
             raise RuntimeError(f"Missing 'epoch' in checkpoint at {args.load_path}")
-        start_epoch = checkpoint['epoch'] + 1  # Start from the next epoch
+        start_epoch = checkpoint['epoch'] + 1
 
-        # Ensure 'best_val_miou' exists in the checkpoint
         if 'best_val_miou' not in checkpoint:
             raise RuntimeError(f"Missing 'best_val_miou' in checkpoint at {args.load_path}")
         best_val_miou = checkpoint['best_val_miou']
@@ -144,66 +141,59 @@ if __name__ == '__main__':
         start_epoch = 0
         best_val_miou = float('-inf')
         print("No checkpoint found, training from scratch")
-    '''
-       else:
-           raise RuntimeError(f"Checkpoint path '{args.load_path}' not found or is invalid")
-    '''
 
-    # Save the initial model state (including scheduler)
-    if utils.is_main_process():
+    # Save an initial checkpoint before training starts
+    if args.training and utils.is_main_process():
+        initial_checkpoint_path = os.path.join(args.save_path, "initial_checkpoint.pth")
+        os.makedirs(args.save_path, exist_ok=True)
         torch.save({
-            'epoch': start_epoch - 1,
+            'epoch': start_epoch - 1,  # Indicate it's before the first epoch
             'model_state_dict': model.state_dict(),
             'optimizer_state_dict': optimizer.state_dict(),
-            'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state (None initially)
-            'best_val_miou': best_val_miou,
-        }, args.save_path)
-        print(f"Initial model state saved to {args.save_path}")
+            'scheduler_state_dict': scheduler.state_dict(),
+            'val_miou': None,  # No validation has been performed yet
+        }, initial_checkpoint_path)
+        print(f"Initial checkpoint saved to {initial_checkpoint_path}")
 
-    # Freeze layers (optional)
-    for param in model.module.layer0.parameters():
-        param.requires_grad = False
-    for param in model.module.layer1.parameters():
-        param.requires_grad = False
-    for param in model.module.layer2.parameters():
-        param.requires_grad = False
-    for param in model.module.layer3.parameters():
-        param.requires_grad = False
-    for param in model.module.layer4.parameters():
-        param.requires_grad = False
+    # Training or validation loop
+    if args.training:
+        print("Starting Training...")
+        for epoch in range(start_epoch, args.epochs):
+            # Training
+            trn_loss, trn_miou, trn_fb_iou = train(args, epoch, model, sam_model, dataloader_trn, optimizer, scheduler, training=True)
 
-    Evaluator.initialize(args)
+            # Validation
+            with torch.no_grad():
+                val_loss, val_miou, val_fb_iou = train(args, epoch, model, sam_model, dataloader_val, optimizer, scheduler, training=False)
 
-
-    # Training Loop
-    for epoch in range(start_epoch, args.epochs):
-        # Training
-        trn_loss, trn_miou, trn_fb_iou = train(args, epoch, model, sam_model, dataloader_trn, optimizer, scheduler,
-                                               training=True)
-        # Validation
-        with torch.no_grad():
-            val_loss, val_miou, val_fb_iou = train(args, epoch, model, sam_model, dataloader_val, optimizer, scheduler,
-                                                   training=False)
-
-        # Save the best model
-        if val_miou > best_val_miou:
-            best_val_miou = val_miou
+            # Save checkpoint for the current epoch
             if utils.is_main_process():
+                epoch_checkpoint_path = os.path.join(args.save_path, f"epoch_{epoch}_checkpoint.pth")
                 torch.save({
                     'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
-                    'scheduler_state_dict': scheduler.state_dict(),  # Save scheduler state
-                    'best_val_miou': best_val_miou,
-                }, args.save_path)
-                print(f"Best model updated and saved to {args.save_path}")
+                    'scheduler_state_dict': scheduler.state_dict(),
+                    'val_miou': val_miou,
+                }, epoch_checkpoint_path)
+                print(f"Checkpoint for epoch {epoch} saved to {epoch_checkpoint_path}")
 
-        # Log to TensorBoard (optional)
-        if utils.is_main_process():
-            Logger.tbd_writer.add_scalars('data/loss', {'trn_loss': trn_loss, 'val_loss': val_loss}, epoch)
-            Logger.tbd_writer.add_scalars('data/miou', {'trn_miou': trn_miou, 'val_miou': val_miou}, epoch)
-            Logger.tbd_writer.add_scalars('data/fb_iou', {'trn_fb_iou': trn_fb_iou, 'val_fb_iou': val_fb_iou}, epoch)
-            Logger.tbd_writer.flush()
+            # Save the best model
+            if val_miou > best_val_miou:
+                best_val_miou = val_miou
+                if utils.is_main_process():
+                    best_checkpoint_path = os.path.join(args.save_path, "best_model.pth")
+                    torch.save({
+                        'epoch': epoch,
+                        'model_state_dict': model.state_dict(),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict(),
+                        'best_val_miou': best_val_miou,
+                    }, best_checkpoint_path)
+                    print(f"Best model updated and saved to {best_checkpoint_path}")
+    else:
+        print("Starting Validation...")
+        with torch.no_grad():
+            val_loss, val_miou, val_fb_iou = train(args, 0, model, sam_model, dataloader_val, None, None, training=False)
+            print(f"Validation Completed: Loss = {val_loss}, mIoU = {val_miou}, Fb_IoU = {val_fb_iou}")
 
-    Logger.tbd_writer.close()
-    Logger.info('==================== Finished Training ====================')

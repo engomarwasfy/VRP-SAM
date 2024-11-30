@@ -94,7 +94,7 @@ class Logger:
             logdir = os.path.join(args.logpath, 'training_logs')
         else:
             # Generate a unique directory name for testing logs
-            test_name = '_TEST_' + args.load.split('/')[-2].split('.')[0]
+            test_name = '_TEST_' + args.load_path.split('/')[-2].split('.')[0]
             logdir = os.path.join(args.logpath, test_name + logtime)
 
         # Ensure the directory exists
