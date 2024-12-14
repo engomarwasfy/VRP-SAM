@@ -132,9 +132,9 @@ if __name__ == '__main__':
             raise RuntimeError(f"Missing 'epoch' in checkpoint at {args.load_path}")
         start_epoch = checkpoint['epoch'] + 1
 
-        if 'best_val_miou' not in checkpoint:
+        if 'val_miou' not in checkpoint:
             raise RuntimeError(f"Missing 'best_val_miou' in checkpoint at {args.load_path}")
-        best_val_miou = checkpoint['best_val_miou']
+        best_val_miou = checkpoint['val_miou']
 
         print(f"Loaded model from {args.load_path}, starting from epoch {start_epoch}")
     else:
